@@ -1,10 +1,7 @@
 use crate::{analyze, DumpError};
 
-type ArgAnalyze = fn(
-    args: &Vec<String>,
-    index: usize,
-    filterArg: &mut FilterArg,
-) -> Result<(bool, usize), DumpError>;
+type ArgAnalyze =
+    fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<(bool, usize), DumpError>;
 
 static ARG_ANALYZE_ARRAY: [ArgAnalyze; 2] = [port_analy, help_analy];
 
@@ -35,10 +32,8 @@ impl FilterArg {
             timeout: 200,
         }
     }
-}
 
-impl Default for FilterArg {
-    fn default() -> Self {
+    fn default_arg() -> Self {
         Self {
             device_name: "any".to_string(),
             net_pro: Some("ip".to_string()),
@@ -50,30 +45,70 @@ impl Default for FilterArg {
     }
 }
 
-impl TryFrom<Vec<String>> for FilterArg {
-    type Error = DumpError;
+// 参数，输出相关
+#[derive(Debug)]
+pub struct OutArg {
+    // 输出形式
+    pub out_type: OutType,
+    // 输出位置，true：文件，false：控制台
+    pub file_flag: bool,
+    // 文件名，当输出到文件时，预期有值
+    pub file_name: Option<String>,
+}
 
-    fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        // 检查是否使用默认值
-        let mut filter_arg =
-            if args.contains(&"-d".to_string()) || args.contains(&"--default".to_string()) {
-                FilterArg::default()
-            } else {
-                FilterArg::new()
-            };
-        let mut index = 0;
-        while index < args.len() {
-            for analyze_fn in ARG_ANALYZE_ARRAY {
-                let (next_flag, next_index) = analyze_fn(&args, index, &mut filter_arg)?;
-                index = next_index;
-                if !next_flag {
-                    break;
-                }
+// 输出形式
+#[derive(Debug)]
+pub enum OutType {
+    // 原值
+    Itself,
+    // 10进制
+    Decimal,
+    // 文本，.0是编码，目前不使用
+    Text(&'static str),
+}
+
+impl OutArg {
+    fn new() -> OutArg {
+        OutArg {
+            out_type: OutType::Decimal,
+            file_flag: false,
+            file_name: None,
+        }
+    }
+
+    fn default_arg() -> Self {
+        Self {
+            out_type: OutType::Text("utf8"),
+            file_flag: false,
+            file_name: None,
+        }
+    }
+}
+
+pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
+    // 检查是否使用默认值
+    let mut filter_arg;
+    let mut out_arg;
+    if args.contains(&"-d".to_string()) || args.contains(&"--default".to_string()) {
+        filter_arg = FilterArg::default_arg();
+        out_arg = OutArg::default_arg();
+    } else {
+        filter_arg = FilterArg::new();
+        out_arg = OutArg::new();
+    };
+
+    let mut index = 0;
+    while index < args.len() {
+        for analyze_fn in ARG_ANALYZE_ARRAY {
+            let (next_flag, next_index) = analyze_fn(&args, index, &mut filter_arg, &mut out_arg)?;
+            index = next_index;
+            if !next_flag {
+                break;
             }
         }
-
-        Ok(filter_arg)
     }
+
+    Ok((filter_arg, out_arg))
 }
 
 // help
@@ -81,6 +116,7 @@ fn help_analy(
     _args: &Vec<String>,
     index: usize,
     _filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
 ) -> Result<(bool, usize), DumpError> {
     Ok((true, index + 1))
 }
@@ -90,6 +126,7 @@ fn port_analy(
     args: &Vec<String>,
     index: usize,
     filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
 ) -> Result<(bool, usize), DumpError> {
     if args.len() <= index {
         return Ok((false, index));

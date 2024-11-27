@@ -1,5 +1,5 @@
 // 解析参数
-mod dump_arg;
+pub mod dump_arg;
 // 监听
 mod listener;
 // 分析协议信息
@@ -12,6 +12,7 @@ mod process;
 use std::{error, fmt};
 
 pub use dump_arg::FilterArg;
+pub use dump_arg::OutArg;
 // type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 // 自定义错误类型
@@ -35,7 +36,7 @@ pub struct PacketInfo {
 }
 
 // 入口
-pub fn start(filter_arg: FilterArg) {
-    let sender = process::process();
+pub fn start(filter_arg: FilterArg, out_arg: OutArg) {
+    let sender = process::process(&out_arg);
     listener::listener(&filter_arg, sender);
 }
