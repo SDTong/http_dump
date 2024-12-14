@@ -92,6 +92,7 @@ unsafe fn analyze_link(pro_type: *mut ProType, data: &[u8]) {
         (*pro_type).link_pro = LinkPro::LoopbackAddress;
         (*pro_type).link_start = 0;
         (*pro_type).link_head_len = LOOPBACK_ADDRESS_START.len();
+        return;
     }
     // 未知协议
     (*pro_type).link_pro = LinkPro::Unsupported;

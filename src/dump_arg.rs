@@ -1,9 +1,6 @@
+use std::path::PathBuf;
+
 use crate::{analyze, DumpError};
-
-type ArgAnalyze =
-    fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<(bool, usize), DumpError>;
-
-static ARG_ANALYZE_ARRAY: [ArgAnalyze; 2] = [port_analy, help_analy];
 
 // 参数，过滤相关
 #[derive(Debug)]
@@ -11,6 +8,8 @@ pub struct FilterArg {
     // 网口名，比如常见的en0、lo0（环回地址）
     // 默认值：any 表示所有网口
     pub device_name: String,
+    // 从文件读取数据，优先级高于网口
+    pub file_name: Option<PathBuf>,
     // 网络层协议，IP什么的
     pub net_pro: Option<String>,
     // 传输层协议，TCP什么的
@@ -23,25 +22,16 @@ pub struct FilterArg {
 
 impl FilterArg {
     fn new() -> FilterArg {
-        FilterArg {
+        let filter_arg = FilterArg {
             device_name: "any".to_string(),
-            net_pro: None,
-            tran_pro: None,
-            application_pro: None,
-            port: None,
-            timeout: 200,
-        }
-    }
-
-    fn default_arg() -> Self {
-        Self {
-            device_name: "any".to_string(),
+            file_name: None,
             net_pro: Some("ip".to_string()),
             tran_pro: Some("tcp".to_string()),
             application_pro: Some(analyze::ApplicationPro::HTTP),
             port: Some(80),
             timeout: 200,
-        }
+        };
+        filter_arg
     }
 }
 
@@ -67,17 +57,20 @@ pub enum OutType {
     Text(&'static str),
 }
 
+impl OutType {
+    fn from_name(name: &str) -> Option<OutType> {
+        match name {
+            "itself" => Some(OutType::Itself),
+            "decimal" => Some(OutType::Decimal),
+            "text" => Some(OutType::Text("utf8")),
+            _ => None,
+        }
+    }
+}
+
 impl OutArg {
     fn new() -> OutArg {
         OutArg {
-            out_type: OutType::Decimal,
-            file_flag: false,
-            file_name: None,
-        }
-    }
-
-    fn default_arg() -> Self {
-        Self {
             out_type: OutType::Text("utf8"),
             file_flag: false,
             file_name: None,
@@ -86,20 +79,15 @@ impl OutArg {
 }
 
 pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
-    // 检查是否使用默认值
-    let mut filter_arg;
-    let mut out_arg;
-    if args.contains(&"-d".to_string()) || args.contains(&"--default".to_string()) {
-        filter_arg = FilterArg::default_arg();
-        out_arg = OutArg::default_arg();
-    } else {
-        filter_arg = FilterArg::new();
-        out_arg = OutArg::new();
-    };
+    let mut filter_arg= FilterArg::new();
+    let mut out_arg = OutArg::new();
+
+    // 支持的参数
+    let arg_analyze_array = [port_analy, device_name_analy, out_type_analy, skip_analyfn];
 
     let mut index = 0;
     while index < args.len() {
-        for analyze_fn in ARG_ANALYZE_ARRAY {
+        for analyze_fn in arg_analyze_array {
             let (next_flag, next_index) = analyze_fn(&args, index, &mut filter_arg, &mut out_arg)?;
             index = next_index;
             if !next_flag {
@@ -111,14 +99,26 @@ pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
     Ok((filter_arg, out_arg))
 }
 
-// help
-fn help_analy(
-    _args: &Vec<String>,
+// 网口
+fn device_name_analy(
+    args: &Vec<String>,
     index: usize,
-    _filter_arg: &mut FilterArg,
+    filter_arg: &mut FilterArg,
     _out_arg: &mut OutArg,
 ) -> Result<(bool, usize), DumpError> {
-    Ok((true, index + 1))
+    if "-i" != args[index] {
+        return Ok((true, index));
+    }
+    if args.len() <= index + 1 {
+        // 正常是 -p 80 或 -port 80 ，少了值
+        return Err(DumpError {
+            msg: "网口缺少值".to_string(),
+        });
+    }
+    let index = index + 1;
+    filter_arg.device_name = args[index].clone();
+    
+    Ok((false, index + 1))
 }
 
 // port
@@ -128,10 +128,7 @@ fn port_analy(
     filter_arg: &mut FilterArg,
     _out_arg: &mut OutArg,
 ) -> Result<(bool, usize), DumpError> {
-    if args.len() <= index {
-        return Ok((false, index));
-    }
-    if "-p" != args[index] && "-port" != args[index] {
+    if "-p" != args[index] && "--port" != args[index] {
         return Ok((true, index));
     }
     if args.len() <= index + 1 {
@@ -144,10 +141,49 @@ fn port_analy(
     let port = args[index].parse();
     if port.is_err() {
         return Err(DumpError {
-            msg: "端口号错误，仅支持0-255".to_string(),
+            msg: "端口号错误，仅支持0-65535".to_string(),
         });
     }
     filter_arg.port = Some(port.unwrap());
 
     Ok((false, index + 1))
+}
+
+// 输出类型
+fn out_type_analy(
+    args: &Vec<String>,
+    index: usize,
+    _filter_arg: &mut FilterArg,
+    out_arg: &mut OutArg,
+) -> Result<(bool, usize), DumpError> {
+    if "-ot" != args[index] && "--outType" != args[index] {
+        return Ok((true, index));
+    }
+    if args.len() <= index + 1 {
+        // 正常是 -ot text 或 --port text ，少了值
+        return Err(DumpError {
+            msg: "输出类型缺少值".to_string(),
+        });
+    }
+    let index = index + 1;
+    match OutType::from_name(&args[index]) {
+        Some(out_type) => out_arg.out_type = out_type,
+        None => return Err(DumpError {
+            msg: "不支持的输出类型".to_string(),
+        }),
+    }
+
+    Ok((false, index + 1))
+}
+
+// 跳过不支持的参数
+// 必须放在最后
+// -h --help 也在这里处理，忽略参数
+fn skip_analyfn(
+    _args: &Vec<String>,
+    index: usize,
+    _filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
+) -> Result<(bool, usize), DumpError> {
+    Ok((true, index + 1))
 }

@@ -15,8 +15,9 @@ fn main() {
 fn show_print() {
     let help = r#"
 -h --help       显示帮助
--d --default    默认参数。捕获IP、TCP协议，80端口，HTTP报文的数据，utf8编码，输出到控制台
+-i              网口
 -p --port       端口号
+-ot --outType   输出类型，支持值域： itself(原值), decimal(10进制数组), text(utf8编码的字符串)
 "#;
     print!("{help}");
 }

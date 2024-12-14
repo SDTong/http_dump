@@ -1,21 +1,27 @@
 use std::sync::mpsc::Sender;
 
-use pcap::{Active, Capture, Device};
+use pcap::{Activated, Active, Capture, Device, Offline};
 
 use crate::{analyze, FilterArg, PacketInfo};
 
 pub fn listener(filter_arg: &FilterArg, sender: Sender<PacketInfo>) {
-    let device = Device::from(filter_arg.device_name.as_str());
-    let device_name = device.name.clone();
-    let mut capture = get_capture(device, &filter_arg);
-    set_filter(&filter_arg, &mut capture);
-    println!("device name: {device_name} start");
-    listening(&filter_arg, capture, sender);
+    if filter_arg.file_name.is_some() {
+        let mut capture = capture_from_file(filter_arg);
+        set_filter(&filter_arg, &mut capture);
+        listening(&filter_arg, capture, sender);
+    } else {
+        let mut capture = capture_from_device(filter_arg);
+        set_filter(&filter_arg, &mut capture);
+        listening(&filter_arg, capture, sender);
+    };
 }
 
-// 获取 Capture
+// 获取 Capture，从网口读数据
 // 就是操作句柄
-fn get_capture(device: Device, filter_arg: &FilterArg) -> Capture<Active> {
+fn capture_from_device(filter_arg: &FilterArg) -> Capture<Active> {
+    let device = Device::from(filter_arg.device_name.as_str());
+    println!("device name: {}", device.name);
+
     pcap::Capture::from_device(device)
         .unwrap()
         // 设置混杂模式，支持接收所有网络端口的数据
@@ -28,9 +34,14 @@ fn get_capture(device: Device, filter_arg: &FilterArg) -> Capture<Active> {
         .unwrap()
 }
 
+// 获取Capture，从文件读数据
+// 就是操作句柄
+fn capture_from_file(filter_arg: &FilterArg) -> Capture<Offline> {
+    pcap::Capture::from_file(filter_arg.file_name.as_ref().unwrap()).unwrap()
+}
+
 // 设置过滤器
-fn set_filter(filter_arg: &FilterArg, capture: &mut Capture<Active>) {
-    // capture.filter("port 8088", true).unwrap();
+fn set_filter<T: Activated + ?Sized>(filter_arg: &FilterArg, capture: &mut Capture<T>) {
     let mut program = String::new();
     if let Some(net_pro) = &filter_arg.net_pro {
         program.push_str(net_pro);
@@ -53,7 +64,7 @@ fn set_filter(filter_arg: &FilterArg, capture: &mut Capture<Active>) {
 }
 
 // 开启监听
-fn listening(filter_arg: &FilterArg, mut capture: Capture<Active>, sender: Sender<PacketInfo>) {
+fn listening<T: Activated + ?Sized>(filter_arg: &FilterArg, mut capture: Capture<T>, sender: Sender<PacketInfo>) {
     loop {
         match capture.next_packet() {
             Ok(packet) => {
