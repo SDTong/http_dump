@@ -1,6 +1,10 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{analyze, DumpError};
+
+
+type ArgAnalyze =
+    fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<usize, DumpError>;
 
 // 参数，过滤相关
 #[derive(Debug)]
@@ -82,33 +86,41 @@ pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
     let mut filter_arg= FilterArg::new();
     let mut out_arg = OutArg::new();
 
-    // 支持的参数
-    let arg_analyze_array = [port_analy, device_name_analy, out_type_analy, skip_analyfn];
+    let analyze_map = all_analyze_fn();
 
     let mut index = 0;
     while index < args.len() {
-        for analyze_fn in arg_analyze_array {
-            let (next_flag, next_index) = analyze_fn(&args, index, &mut filter_arg, &mut out_arg)?;
-            index = next_index;
-            if !next_flag {
-                break;
-            }
+        let key = args[index].as_str();
+        if let Some(analyze_fn) = analyze_map.get(key) {
+            index = analyze_fn(&args, index, &mut filter_arg, &mut out_arg)?;
+        } else {
+            index += 1;
         }
     }
 
     Ok((filter_arg, out_arg))
 }
 
-// 网口
+// 获取所有处理函数
+fn all_analyze_fn() -> HashMap<&'static str, ArgAnalyze> {
+    let mut map: HashMap<&str, ArgAnalyze> = HashMap::new();
+    map.insert("-i", device_name_analy);
+    map.insert("-r", file_name_analy);
+    map.insert("-p", port_analy);
+    map.insert("--port", port_analy);
+    map.insert("-ot", out_type_analy);
+    map.insert("--outType", out_type_analy);
+
+    map
+}
+
+// 网口 -i
 fn device_name_analy(
     args: &Vec<String>,
     index: usize,
     filter_arg: &mut FilterArg,
     _out_arg: &mut OutArg,
-) -> Result<(bool, usize), DumpError> {
-    if "-i" != args[index] {
-        return Ok((true, index));
-    }
+) -> Result<usize, DumpError> {
     if args.len() <= index + 1 {
         // 正常是 -p 80 或 -port 80 ，少了值
         return Err(DumpError {
@@ -118,19 +130,35 @@ fn device_name_analy(
     let index = index + 1;
     filter_arg.device_name = args[index].clone();
     
-    Ok((false, index + 1))
+    Ok(index + 1)
 }
 
-// port
+// 从pcap文件读取数据
+fn file_name_analy(
+    args: &Vec<String>,
+    index: usize,
+    filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    if args.len() <= index + 1 {
+        // 正常是 -r 文件名 ，少了值
+        return Err(DumpError {
+            msg: "缺少文件名".to_string(),
+        });
+    }
+    let index = index + 1;
+    filter_arg.file_name = Some(args[index].clone().into());
+    
+    Ok(index + 1)
+}
+
+// port -p --port
 fn port_analy(
     args: &Vec<String>,
     index: usize,
     filter_arg: &mut FilterArg,
     _out_arg: &mut OutArg,
-) -> Result<(bool, usize), DumpError> {
-    if "-p" != args[index] && "--port" != args[index] {
-        return Ok((true, index));
-    }
+) -> Result<usize, DumpError> {
     if args.len() <= index + 1 {
         // 正常是 -p 80 或 -port 80 ，少了值
         return Err(DumpError {
@@ -146,19 +174,16 @@ fn port_analy(
     }
     filter_arg.port = Some(port.unwrap());
 
-    Ok((false, index + 1))
+    Ok(index + 1)
 }
 
-// 输出类型
+// 输出类型 -ot --outType
 fn out_type_analy(
     args: &Vec<String>,
     index: usize,
     _filter_arg: &mut FilterArg,
     out_arg: &mut OutArg,
-) -> Result<(bool, usize), DumpError> {
-    if "-ot" != args[index] && "--outType" != args[index] {
-        return Ok((true, index));
-    }
+) -> Result<usize, DumpError> {
     if args.len() <= index + 1 {
         // 正常是 -ot text 或 --port text ，少了值
         return Err(DumpError {
@@ -173,17 +198,5 @@ fn out_type_analy(
         }),
     }
 
-    Ok((false, index + 1))
-}
-
-// 跳过不支持的参数
-// 必须放在最后
-// -h --help 也在这里处理，忽略参数
-fn skip_analyfn(
-    _args: &Vec<String>,
-    index: usize,
-    _filter_arg: &mut FilterArg,
-    _out_arg: &mut OutArg,
-) -> Result<(bool, usize), DumpError> {
-    Ok((true, index + 1))
+    Ok(index + 1)
 }

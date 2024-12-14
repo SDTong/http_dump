@@ -16,6 +16,7 @@ fn show_print() {
     let help = r#"
 -h --help       显示帮助
 -i              网口
+-r              从读文件读取网络数据
 -p --port       端口号
 -ot --outType   输出类型，支持值域： itself(原值), decimal(10进制数组), text(utf8编码的字符串)
 "#;
