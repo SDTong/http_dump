@@ -6,10 +6,10 @@ const LOOPBACK_ADDRESS_START: [u8; 4] = [2, 0, 0, 0];
 #[derive(Debug)]
 pub struct ProType {
     link_pro: LinkPro,
-    link_start: usize,
+    pub link_start: usize,
     link_head_len: usize,
     network_pro: NetworkPro,
-    network_start: usize,
+    pub network_start: usize,
     network_head_len: usize,
     pub transport_pro: TransportPro,
     pub transport_start: usize,

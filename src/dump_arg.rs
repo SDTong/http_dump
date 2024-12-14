@@ -44,10 +44,20 @@ impl FilterArg {
 pub struct OutArg {
     // 输出形式
     pub out_type: OutType,
-    // 输出位置，true：文件，false：控制台
-    pub file_flag: bool,
-    // 文件名，当输出到文件时，预期有值
+    // 输出数据层
+    pub out_pro: OutPro,
+    // 文件名，有值时，输出到文件，没有值时，输出到控制台
     pub file_name: Option<String>,
+}
+
+impl OutArg {
+    fn new() -> OutArg {
+        OutArg {
+            out_type: OutType::Text("utf8"),
+            out_pro: OutPro::Application,
+            file_name: None,
+        }
+    }
 }
 
 // 输出形式
@@ -72,12 +82,20 @@ impl OutType {
     }
 }
 
-impl OutArg {
-    fn new() -> OutArg {
-        OutArg {
-            out_type: OutType::Text("utf8"),
-            file_flag: false,
-            file_name: None,
+// 输出协议，包含协议头
+#[derive(Debug)]
+pub enum OutPro {
+    Link, Network, Transport, Application,
+}
+
+impl OutPro {
+    fn from_name(name: &str) -> Option<OutPro> {
+        match name {
+            "link" => Some(OutPro::Link),
+            "network" => Some(OutPro::Network),
+            "transport" => Some(OutPro::Transport),
+            "application" => Some(OutPro::Application),
+            _ => None,
         }
     }
 }
@@ -110,6 +128,8 @@ fn all_analyze_fn() -> HashMap<&'static str, ArgAnalyze> {
     map.insert("--port", port_analy);
     map.insert("-ot", out_type_analy);
     map.insert("--outType", out_type_analy);
+    map.insert("-op", out_pro_analy);
+    map.insert("--outPro", out_pro_analy);
 
     map
 }
@@ -173,6 +193,30 @@ fn port_analy(
         });
     }
     filter_arg.port = Some(port.unwrap());
+
+    Ok(index + 1)
+}
+
+// 输出协议层 -op --outPro
+fn out_pro_analy(
+    args: &Vec<String>,
+    index: usize,
+    _filter_arg: &mut FilterArg,
+    out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    if args.len() <= index + 1 {
+        // 正常是 -ot text 或 --port text ，少了值
+        return Err(DumpError {
+            msg: "输出协议层缺少值".to_string(),
+        });
+    }
+    let index = index + 1;
+    match OutPro::from_name(&args[index]) {
+        Some(out_pro) => out_arg.out_pro = out_pro,
+        None => return Err(DumpError {
+            msg: "不支持的输出协议层".to_string(),
+        }),
+    }
 
     Ok(index + 1)
 }

@@ -1,15 +1,15 @@
 use std::{
-    borrow::Cow, io::Write, sync::mpsc::{self, Sender}, thread
+    borrow::Cow, io::Write, sync::mpsc::{self, Sender}, thread::{self, JoinHandle}
 };
 
 use crate::{dump_arg, OutArg, PacketInfo};
 
-pub fn process(out_arg: &OutArg) -> Sender<PacketInfo> {
+pub fn process(out_arg: &OutArg) -> (Sender<PacketInfo>, JoinHandle<()>) {
     let get_data = get_data_fn(out_arg);
     let change_data = change_data_fn(out_arg);
     let out_data = out_data_fn(out_arg);
     let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || {
+    let join_handle = thread::spawn(move || {
         for packet_info in receiver {
             let data = get_data(&packet_info);
             let data = change_data(data);
@@ -17,12 +17,17 @@ pub fn process(out_arg: &OutArg) -> Sender<PacketInfo> {
             out_data(b"\n\n");
         }
     });
-    sender
+    (sender, join_handle)
 }
 
 // 获取基础数据
-fn get_data_fn(_out_arg: &OutArg) -> fn(&PacketInfo) -> &[u8] {
-    application_all_data
+fn get_data_fn(out_arg: &OutArg) -> fn(&PacketInfo) -> &[u8] {
+    match out_arg.out_pro {
+        dump_arg::OutPro::Link => link_all_data,
+        dump_arg::OutPro::Network => network_all_data,
+        dump_arg::OutPro::Transport => transport_all_data,
+        dump_arg::OutPro::Application => application_all_data, 
+    }
 }
 
 // 数据转换
@@ -36,11 +41,26 @@ fn change_data_fn(out_arg: &OutArg) -> fn(&[u8]) -> Cow<'_, [u8]> {
 
 // 数据输出
 fn out_data_fn(out_arg: &OutArg) -> fn(&[u8]) {
-    if out_arg.file_flag {
+    if let Some(_) = out_arg.file_name {
         write_file_data
     } else {
         println_console_data
     }
+}
+
+// 链路层报文
+fn link_all_data(packet_info: &PacketInfo) -> &[u8] {
+    &packet_info.data[packet_info.pro_type.link_start..]
+}
+
+// 网络层报文
+fn network_all_data(packet_info: &PacketInfo) -> &[u8] {
+    &packet_info.data[packet_info.pro_type.network_start..]
+}
+
+// 传输层报文
+fn transport_all_data(packet_info: &PacketInfo) -> &[u8] {
+    &packet_info.data[packet_info.pro_type.transport_start..]
 }
 
 // 应用层报文

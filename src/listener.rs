@@ -84,6 +84,10 @@ fn listening<T: Activated + ?Sized>(filter_arg: &FilterArg, mut capture: Capture
             Err(error) if pcap::Error::TimeoutExpired == error => {
                 // 超时错误，忽略
             }
+            Err(error) if pcap::Error::NoMorePackets == error => {
+                // 从文件读取数据时，所有数据都读完了，没有需要处理的数据了
+                break;
+            }
             Err(error) => {
                 println!("发生异常: {error}");
                 break;
