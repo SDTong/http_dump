@@ -1,23 +1,24 @@
 use std::{
-    borrow::Cow, io::Write, sync::mpsc::{self, Sender}, thread::{self, JoinHandle}
+    borrow::Cow, io::Write, sync::mpsc::Receiver
 };
 
 use crate::{dump_arg, OutArg, PacketInfo};
 
-pub fn process(out_arg: &OutArg) -> (Sender<PacketInfo>, JoinHandle<()>) {
+pub fn process(out_arg: &OutArg, receiver: &Receiver<PacketInfo>) {
+    if out_arg.pcap_file_name.is_some() {
+        for _ in receiver {}
+        return;
+    }
     let get_data = get_data_fn(out_arg);
     let change_data = change_data_fn(out_arg);
     let out_data = out_data_fn(out_arg);
-    let (sender, receiver) = mpsc::channel();
-    let join_handle = thread::spawn(move || {
-        for packet_info in receiver {
-            let data = get_data(&packet_info);
-            let data = change_data(data);
-            out_data(&data);
-            out_data(b"\n\n");
-        }
-    });
-    (sender, join_handle)
+    
+    for packet_info in receiver {
+        let data = get_data(&packet_info);
+        let data = change_data(data);
+        out_data(&data);
+        out_data(b"\n\n");
+    }
 }
 
 // 获取基础数据

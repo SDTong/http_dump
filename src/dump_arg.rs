@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fmt::Debug, path::PathBuf};
 
 use crate::{analyze, DumpError};
 
@@ -48,6 +48,8 @@ pub struct OutArg {
     pub out_pro: OutPro,
     // 文件名，有值时，输出到文件，没有值时，输出到控制台
     pub file_name: Option<String>,
+    // pcap文件名，和tcpdump -w命令相同
+    pub pcap_file_name: Option<String>,
 }
 
 impl OutArg {
@@ -56,6 +58,7 @@ impl OutArg {
             out_type: OutType::Text("utf8"),
             out_pro: OutPro::Application,
             file_name: None,
+            pcap_file_name: None,
         }
     }
 }
@@ -123,7 +126,8 @@ pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
 fn all_analyze_fn() -> HashMap<&'static str, ArgAnalyze> {
     let mut map: HashMap<&str, ArgAnalyze> = HashMap::new();
     map.insert("-i", device_name_analy);
-    map.insert("-r", file_name_analy);
+    map.insert("-r", in_file_name_analy);
+    map.insert("-w", pcap_file_name_analy);
     map.insert("-p", port_analy);
     map.insert("--port", port_analy);
     map.insert("-ot", out_type_analy);
@@ -154,7 +158,7 @@ fn device_name_analy(
 }
 
 // 从pcap文件读取数据
-fn file_name_analy(
+fn in_file_name_analy(
     args: &Vec<String>,
     index: usize,
     filter_arg: &mut FilterArg,
@@ -241,6 +245,25 @@ fn out_type_analy(
             msg: "不支持的输出类型".to_string(),
         }),
     }
+
+    Ok(index + 1)
+}
+
+// 生成pcap文件 -w
+fn pcap_file_name_analy(
+    args: &Vec<String>,
+    index: usize,
+    _filter_arg: &mut FilterArg,
+    out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    if args.len() <= index + 1 {
+        // 正常是 -w 文件名 ，少了值
+        return Err(DumpError {
+            msg: "缺少pcap文件名".to_string(),
+        });
+    }
+    let index = index + 1;
+    out_arg.pcap_file_name = Some(args[index].clone());
 
     Ok(index + 1)
 }

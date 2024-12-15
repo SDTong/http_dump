@@ -1,19 +1,28 @@
-use std::sync::mpsc::Sender;
+use std::{sync::mpsc::{self, Receiver, Sender}, thread};
 
 use pcap::{Activated, Active, Capture, Device, Offline};
 
-use crate::{analyze, FilterArg, PacketInfo};
+use crate::{analyze, FilterArg, OutArg, PacketInfo};
 
-pub fn listener(filter_arg: &FilterArg, sender: Sender<PacketInfo>) {
+pub fn listener(filter_arg: FilterArg, out_arg: &mut OutArg) -> Receiver<PacketInfo> {
+    // sender: Sender<PacketInfo>
+    let (sender, receiver) = mpsc::channel();
     if filter_arg.file_name.is_some() {
-        let mut capture = capture_from_file(filter_arg);
+        let mut capture = capture_from_file(&filter_arg);
         set_filter(&filter_arg, &mut capture);
-        listening(&filter_arg, capture, sender);
+        thread::spawn(move || listening(&filter_arg, capture, sender, None));
     } else {
-        let mut capture = capture_from_device(filter_arg);
+        let mut capture = capture_from_device(&filter_arg);
         set_filter(&filter_arg, &mut capture);
-        listening(&filter_arg, capture, sender);
+        let save_file_option = if let Some(path) = &out_arg.pcap_file_name {
+            let save_file = capture.savefile(path).unwrap();
+            Some(save_file)
+        } else {
+            None
+        };
+        thread::spawn(move || listening(&filter_arg, capture, sender, save_file_option));
     };
+    receiver
 }
 
 // 获取 Capture，从网口读数据
@@ -64,11 +73,12 @@ fn set_filter<T: Activated + ?Sized>(filter_arg: &FilterArg, capture: &mut Captu
 }
 
 // 开启监听
-fn listening<T: Activated + ?Sized>(filter_arg: &FilterArg, mut capture: Capture<T>, sender: Sender<PacketInfo>) {
+fn listening<T: Activated + ?Sized>(filter_arg: &FilterArg, mut capture: Capture<T>, sender: Sender<PacketInfo>, mut save_file_option: Option<pcap::Savefile>) {
+    let linktype = capture.get_datalink();
     loop {
         match capture.next_packet() {
             Ok(packet) => {
-                let pro_type = analyze::ProType::from(packet.data);
+                let pro_type = analyze::ProType::from_with_linktype(&&linktype, packet.data);
                 if !filter(filter_arg, &pro_type) {
                     // 不是目标
                     continue;
@@ -79,6 +89,10 @@ fn listening<T: Activated + ?Sized>(filter_arg: &FilterArg, mut capture: Capture
                 };
                 if let Err(_) = sender.send(packet_info) {
                     break;
+                }
+                if let Some(save_file) = save_file_option.as_mut() {
+                    save_file.write(&packet);
+                    let _ = save_file.flush();
                 }
             }
             Err(error) if pcap::Error::TimeoutExpired == error => {

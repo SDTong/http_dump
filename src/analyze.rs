@@ -1,5 +1,6 @@
 use std::mem;
 
+// mac os 下，环回地址报文开头，不再通过报文判断
 const LOOPBACK_ADDRESS_START: [u8; 4] = [2, 0, 0, 0];
 
 // 协议类型
@@ -19,8 +20,8 @@ pub struct ProType {
     pub application_head_len: usize,
 }
 
-impl From<&[u8]> for ProType {
-    fn from(data: &[u8]) -> Self {
+impl ProType {
+    pub(crate) fn from_with_linktype(linktype: &pcap::Linktype, data: &[u8]) -> Self {
         if data.is_empty() {
             return ProType {
                 link_pro: LinkPro::Unsupported,
@@ -40,7 +41,7 @@ impl From<&[u8]> for ProType {
         let mut pro_type = mem::MaybeUninit::<ProType>::uninit();
 
         unsafe {
-            analyze_link(pro_type.as_mut_ptr(), data);
+            analyze_link_with_linktype(linktype, pro_type.as_mut_ptr(), data);
             analyze_network(pro_type.as_mut_ptr(), data);
             analyze_transport(pro_type.as_mut_ptr(), data);
             analyze_application(pro_type.as_mut_ptr(), data);
@@ -52,6 +53,8 @@ impl From<&[u8]> for ProType {
 // 链路层协议
 #[derive(Debug)]
 enum LinkPro {
+    // 无，一般是监听any，这时没有链路层数据
+    NotHave,
     // 环回地址
     LoopbackAddress,
     // 以太网
@@ -86,12 +89,19 @@ pub enum ApplicationPro {
 }
 
 // 分析链路层协议
-unsafe fn analyze_link(pro_type: *mut ProType, data: &[u8]) {
-    if data.len() >= 4 && data.starts_with(&LOOPBACK_ADDRESS_START) {
+unsafe fn analyze_link_with_linktype(linktype: &pcap::Linktype, pro_type: *mut ProType, _data: &[u8]) {
+    if *linktype == pcap::Linktype::NULL {
         // 环回地址
         (*pro_type).link_pro = LinkPro::LoopbackAddress;
         (*pro_type).link_start = 0;
         (*pro_type).link_head_len = LOOPBACK_ADDRESS_START.len();
+        return;
+    }
+    if linktype.0 == 12 {
+        // mac os下，监听any网口，没有数据链路层
+        (*pro_type).link_pro = LinkPro::NotHave;
+        (*pro_type).link_start = 0;
+        (*pro_type).link_head_len = 0;
         return;
     }
     // 未知协议
@@ -110,14 +120,14 @@ unsafe fn analyze_network(pro_type: *mut ProType, data: &[u8]) {
                 return;
             }
         }
-        LinkPro::Unsupported => {
-            // 发现访问127.0.0.1时，可能没有链路层协议，
+        LinkPro::NotHave => {
             // 只要可以识别为IP，就认为是IP，复杂的以后再说
             let start = (*pro_type).link_start + (*pro_type).link_head_len;
             if data.len() >= start && guess_ipv4(pro_type, start, data) {
                 return;
             }
         }
+        _ => {}
     }
     (*pro_type).network_pro = NetworkPro::Unsupported;
     (*pro_type).network_start = if let LinkPro::Unsupported = (*pro_type).link_pro {

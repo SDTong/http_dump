@@ -36,8 +36,7 @@ pub struct PacketInfo {
 }
 
 // 入口
-pub fn start(filter_arg: FilterArg, out_arg: OutArg) {
-    let (sender, join_handle) = process::process(&out_arg);
-    listener::listener(&filter_arg, sender);
-    let _ = join_handle.join();
+pub fn start(filter_arg: FilterArg, mut out_arg: OutArg) {
+    let receiver = listener::listener(filter_arg, &mut out_arg);
+    process::process(&out_arg, &receiver);
 }
