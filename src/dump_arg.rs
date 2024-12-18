@@ -14,13 +14,11 @@ pub struct FilterArg {
     pub device_name: String,
     // 从文件读取数据，优先级高于网口
     pub file_name: Option<PathBuf>,
-    // 网络层协议，IP什么的
-    pub net_pro: Option<String>,
-    // 传输层协议，TCP什么的
-    pub tran_pro: Option<String>,
     // 应用层协议，HTTP什么的
     pub application_pro: Option<analyze::ApplicationPro>,
     pub port: Option<u16>,
+    // BPF过滤条件
+    pub bpf: Option<String>,
     pub timeout: i32,
 }
 
@@ -29,10 +27,9 @@ impl FilterArg {
         let filter_arg = FilterArg {
             device_name: "any".to_string(),
             file_name: None,
-            net_pro: Some("ip".to_string()),
-            tran_pro: Some("tcp".to_string()),
             application_pro: Some(analyze::ApplicationPro::HTTP),
             port: Some(80),
+            bpf: None,
             timeout: 200,
         };
         filter_arg
@@ -130,6 +127,7 @@ fn all_analyze_fn() -> HashMap<&'static str, ArgAnalyze> {
     map.insert("-w", pcap_file_name_analy);
     map.insert("-p", port_analy);
     map.insert("--port", port_analy);
+    map.insert("--bpf", bpf_analy);
     map.insert("-ot", out_type_analy);
     map.insert("--outType", out_type_analy);
     map.insert("-op", out_pro_analy);
@@ -197,6 +195,25 @@ fn port_analy(
         });
     }
     filter_arg.port = Some(port.unwrap());
+
+    Ok(index + 1)
+}
+
+// BPF过滤条件
+fn bpf_analy(
+    args: &Vec<String>,
+    index: usize,
+    filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    if args.len() <= index + 1 {
+        // 正常是 --bpf 'host 127.0.0.1' ，少了值
+        return Err(DumpError {
+            msg: "BPF过滤条件缺少值".to_string(),
+        });
+    }
+    let index = index + 1;
+    filter_arg.bpf = Some(args[index].clone());
 
     Ok(index + 1)
 }

@@ -52,17 +52,13 @@ fn capture_from_file(filter_arg: &FilterArg) -> Capture<Offline> {
 // 设置过滤器
 fn set_filter<T: Activated + ?Sized>(filter_arg: &FilterArg, capture: &mut Capture<T>) {
     let mut program = String::new();
-    if let Some(net_pro) = &filter_arg.net_pro {
-        program.push_str(net_pro);
-        program.push_str(" and ");
-    }
-    if let Some(tran_pro) = &filter_arg.tran_pro {
-        program.push_str(tran_pro);
-        program.push_str(" and ");
-    }
     if let Some(port) = filter_arg.port {
         program.push_str("port ");
         program.push_str(&port.to_string());
+        program.push_str(" and ");
+    }
+    if let Some(bpf) = &filter_arg.bpf {
+        program.push_str(bpf);
         program.push_str(" and ");
     }
     if let Some(program) = program.strip_suffix(" and ") {
