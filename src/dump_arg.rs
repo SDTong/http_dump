@@ -27,7 +27,7 @@ impl FilterArg {
         let filter_arg = FilterArg {
             device_name: "any".to_string(),
             file_name: None,
-            application_pro: Some(analyze::ApplicationPro::HTTP),
+            application_pro: None,
             port: Some(80),
             bpf: None,
             timeout: 200,
