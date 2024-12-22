@@ -1,6 +1,4 @@
-use std::{
-    borrow::Cow, io::Write, sync::mpsc::Receiver
-};
+use std::{borrow::Cow, io::Write, sync::mpsc::Receiver};
 
 use crate::{dump_arg, OutArg, PacketInfo};
 
@@ -12,7 +10,7 @@ pub fn process(out_arg: &OutArg, receiver: &Receiver<PacketInfo>) {
     let get_data = get_data_fn(out_arg);
     let change_data = change_data_fn(out_arg);
     let out_data = out_data_fn(out_arg);
-    
+
     for packet_info in receiver {
         let data = get_data(&packet_info);
         let data = change_data(data);
@@ -27,7 +25,7 @@ fn get_data_fn(out_arg: &OutArg) -> fn(&PacketInfo) -> &[u8] {
         dump_arg::OutPro::Link => link_all_data,
         dump_arg::OutPro::Network => network_all_data,
         dump_arg::OutPro::Transport => transport_all_data,
-        dump_arg::OutPro::Application => application_all_data, 
+        dump_arg::OutPro::Application => application_all_data,
     }
 }
 

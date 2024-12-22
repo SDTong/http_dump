@@ -2,9 +2,7 @@ use std::{collections::HashMap, fmt::Debug, path::PathBuf};
 
 use crate::{analyze, DumpError};
 
-
-type ArgAnalyze =
-    fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<usize, DumpError>;
+type ArgAnalyze = fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<usize, DumpError>;
 
 // 参数，过滤相关
 #[derive(Debug)]
@@ -23,7 +21,7 @@ pub struct FilterArg {
 }
 
 impl FilterArg {
-    fn new() -> FilterArg {
+    pub fn new() -> FilterArg {
         let filter_arg = FilterArg {
             device_name: "any".to_string(),
             file_name: None,
@@ -50,7 +48,7 @@ pub struct OutArg {
 }
 
 impl OutArg {
-    fn new() -> OutArg {
+    pub fn new() -> OutArg {
         OutArg {
             out_type: OutType::Text("utf8"),
             out_pro: OutPro::Application,
@@ -85,7 +83,10 @@ impl OutType {
 // 输出协议，包含协议头
 #[derive(Debug)]
 pub enum OutPro {
-    Link, Network, Transport, Application,
+    Link,
+    Network,
+    Transport,
+    Application,
 }
 
 impl OutPro {
@@ -101,7 +102,7 @@ impl OutPro {
 }
 
 pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
-    let mut filter_arg= FilterArg::new();
+    let mut filter_arg = FilterArg::new();
     let mut out_arg = OutArg::new();
 
     let analyze_map = all_analyze_fn();
@@ -151,7 +152,7 @@ fn device_name_analy(
     }
     let index = index + 1;
     filter_arg.device_name = args[index].clone();
-    
+
     Ok(index + 1)
 }
 
@@ -170,7 +171,7 @@ fn in_file_name_analy(
     }
     let index = index + 1;
     filter_arg.file_name = Some(args[index].clone().into());
-    
+
     Ok(index + 1)
 }
 
@@ -234,9 +235,11 @@ fn out_pro_analy(
     let index = index + 1;
     match OutPro::from_name(&args[index]) {
         Some(out_pro) => out_arg.out_pro = out_pro,
-        None => return Err(DumpError {
-            msg: "不支持的输出协议层".to_string(),
-        }),
+        None => {
+            return Err(DumpError {
+                msg: "不支持的输出协议层".to_string(),
+            })
+        }
     }
 
     Ok(index + 1)
@@ -258,9 +261,11 @@ fn out_type_analy(
     let index = index + 1;
     match OutType::from_name(&args[index]) {
         Some(out_type) => out_arg.out_type = out_type,
-        None => return Err(DumpError {
-            msg: "不支持的输出类型".to_string(),
-        }),
+        None => {
+            return Err(DumpError {
+                msg: "不支持的输出类型".to_string(),
+            })
+        }
     }
 
     Ok(index + 1)

@@ -1,4 +1,7 @@
-use std::{sync::mpsc::{self, Receiver, Sender}, thread};
+use std::{
+    sync::mpsc::{self, Receiver, Sender},
+    thread,
+};
 
 use pcap::{Activated, Active, Capture, Device, Offline};
 
@@ -69,12 +72,17 @@ fn set_filter<T: Activated + ?Sized>(filter_arg: &FilterArg, capture: &mut Captu
 }
 
 // 开启监听
-fn listening<T: Activated + ?Sized>(filter_arg: &FilterArg, mut capture: Capture<T>, sender: Sender<PacketInfo>, mut save_file_option: Option<pcap::Savefile>) {
+fn listening<T: Activated + ?Sized>(
+    filter_arg: &FilterArg,
+    mut capture: Capture<T>,
+    sender: Sender<PacketInfo>,
+    mut save_file_option: Option<pcap::Savefile>,
+) {
     let linktype = capture.get_datalink();
     loop {
         match capture.next_packet() {
             Ok(packet) => {
-                let pro_type = analyze::ProType::from_with_linktype(&&linktype, packet.data);
+                let pro_type = analyze::ProType::from_with_linktype(&linktype, packet.data);
                 if !filter(filter_arg, &pro_type) {
                     // 不是目标
                     continue;

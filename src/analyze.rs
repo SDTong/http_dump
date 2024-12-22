@@ -17,7 +17,6 @@ pub struct ProType {
     pub transport_head_len: usize,
     pub application_pro: ApplicationPro,
     pub application_start: usize,
-    pub application_head_len: usize,
 }
 
 impl ProType {
@@ -35,7 +34,6 @@ impl ProType {
                 transport_head_len: 0,
                 application_pro: ApplicationPro::Unsupported,
                 application_start: 0,
-                application_head_len: 0,
             };
         }
         let mut pro_type = mem::MaybeUninit::<ProType>::uninit();
@@ -58,7 +56,7 @@ enum LinkPro {
     // 环回地址
     LoopbackAddress,
     // 以太网
-    // Ethernet,
+    Ethernet,
     // 不支持的
     Unsupported,
 }
@@ -89,7 +87,11 @@ pub enum ApplicationPro {
 }
 
 // 分析链路层协议
-unsafe fn analyze_link_with_linktype(linktype: &pcap::Linktype, pro_type: *mut ProType, _data: &[u8]) {
+unsafe fn analyze_link_with_linktype(
+    linktype: &pcap::Linktype,
+    pro_type: *mut ProType,
+    _data: &[u8],
+) {
     if *linktype == pcap::Linktype::NULL {
         // 环回地址
         (*pro_type).link_pro = LinkPro::LoopbackAddress;
@@ -97,54 +99,93 @@ unsafe fn analyze_link_with_linktype(linktype: &pcap::Linktype, pro_type: *mut P
         (*pro_type).link_head_len = LOOPBACK_ADDRESS_START.len();
         return;
     }
-    if linktype.0 == 12 {
-        // mac os下，监听any网口，没有数据链路层
-        (*pro_type).link_pro = LinkPro::NotHave;
-        (*pro_type).link_start = 0;
-        (*pro_type).link_head_len = 0;
-        return;
+    match linktype.0 {
+        1 => {
+            // 以太网
+            (*pro_type).link_pro = LinkPro::Ethernet;
+            (*pro_type).link_start = 0;
+            (*pro_type).link_head_len = 14;
+        }
+        12 => {
+            // mac os下，监听any网口，没有数据链路层
+            (*pro_type).link_pro = LinkPro::NotHave;
+            (*pro_type).link_start = 0;
+            (*pro_type).link_head_len = 0;
+        }
+        _ => {
+            // 未知协议
+            (*pro_type).link_pro = LinkPro::Unsupported;
+            (*pro_type).link_start = 0;
+            (*pro_type).link_head_len = 0;
+        }
     }
-    // 未知协议
-    (*pro_type).link_pro = LinkPro::Unsupported;
-    (*pro_type).link_start = 0;
-    (*pro_type).link_head_len = 0;
 }
 
 // 分析网络层协议
 unsafe fn analyze_network(pro_type: *mut ProType, data: &[u8]) {
     match (*pro_type).link_pro {
-        LinkPro::LoopbackAddress => {
+        LinkPro::Ethernet => {
+            analyze_network_from_ethernet(pro_type, data);
+        }
+        LinkPro::NotHave | LinkPro::LoopbackAddress => {
+            // 只要可以识别为IP，就认为是IP，复杂的以后再说
             // 链路层没有记录协议，只要可以识别为IP，就认为是IP，复杂的以后再说
             let start = (*pro_type).link_start + (*pro_type).link_head_len;
-            if data.len() >= start && guess_ipv4(pro_type, start, data) {
-                return;
+            if !guess_ipv4(pro_type, start, data) {
+                (*pro_type).network_pro = NetworkPro::Unsupported;
+                (*pro_type).network_start = if let LinkPro::Unsupported = (*pro_type).link_pro {
+                    (*pro_type).link_start
+                } else {
+                    (*pro_type).link_start + (*pro_type).link_head_len
+                };
+                (*pro_type).network_head_len = 0;
             }
         }
-        LinkPro::NotHave => {
-            // 只要可以识别为IP，就认为是IP，复杂的以后再说
-            let start = (*pro_type).link_start + (*pro_type).link_head_len;
-            if data.len() >= start && guess_ipv4(pro_type, start, data) {
-                return;
-            }
+        _ => {
+            (*pro_type).network_pro = NetworkPro::Unsupported;
+            (*pro_type).network_start = if let LinkPro::Unsupported = (*pro_type).link_pro {
+                (*pro_type).link_start
+            } else {
+                (*pro_type).link_start + (*pro_type).link_head_len
+            };
+            (*pro_type).network_head_len = 0;
         }
-        _ => {}
     }
-    (*pro_type).network_pro = NetworkPro::Unsupported;
-    (*pro_type).network_start = if let LinkPro::Unsupported = (*pro_type).link_pro {
-        (*pro_type).link_start
-    } else {
-        (*pro_type).link_start + (*pro_type).link_head_len
-    };
-    (*pro_type).network_head_len = 0;
+}
+
+// 根据以太网帧，分析网络层协议信息
+unsafe fn analyze_network_from_ethernet(pro_type: *mut ProType, data: &[u8]) {
+    let link_start = (*pro_type).link_start;
+    let link_head_len = (*pro_type).link_head_len;
+    (*pro_type).network_start = link_start + link_head_len;
+    let most = data[link_start + 12] as u16;
+    let least = data[link_start + 13] as u16;
+    let pro = most << 8 | least;
+
+    match pro {
+        0x0800 => {
+            // IPv4
+            let head_len = (data[(*pro_type).network_start + 0] & 0x0F) * 4;
+            (*pro_type).network_pro = NetworkPro::IPv4;
+            (*pro_type).network_head_len = head_len as usize;
+        }
+        _ => {
+            (*pro_type).network_pro = NetworkPro::Unsupported;
+            (*pro_type).network_head_len = 0;
+        }
+    }
 }
 
 // 猜测是否为ipv4，
 // 只要可以识别为IP，就认为是IP，复杂的以后再说
 unsafe fn guess_ipv4(pro_type: *mut ProType, start: usize, data: &[u8]) -> bool {
+    if data.len() < start {
+        return false;
+    }
     if data[start + 0] >> 4 != 4 {
         return false;
     }
-    let head_len = (data[start + 0] & 0b00001111) * 4;
+    let head_len = (data[start + 0] & 0x0F) * 4;
     if data.len() < head_len as usize {
         return false;
     }
@@ -193,10 +234,8 @@ unsafe fn analyze_application(pro_type: *mut ProType, data: &[u8]) {
         || payload.starts_with(b"HTTP")
     {
         (*pro_type).application_pro = ApplicationPro::HTTP;
-        (*pro_type).application_head_len = 0;
         return;
     }
 
     (*pro_type).application_pro = ApplicationPro::Unsupported;
-    (*pro_type).application_head_len = 0;
 }
