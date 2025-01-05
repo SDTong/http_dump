@@ -11,8 +11,8 @@ mod process;
 
 use std::{error, fmt};
 
-pub use dump_arg::FilterArg;
-pub use dump_arg::OutArg;
+pub use listener::FilterArg;
+pub use process::{OutArg, OutPro, OutType};
 // type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 // 自定义错误类型
@@ -36,7 +36,7 @@ pub struct PacketInfo {
 }
 
 // 入口
-pub fn start(filter_arg: FilterArg, mut out_arg: OutArg) {
-    let receiver = listener::listener(filter_arg, &mut out_arg);
-    process::process(&out_arg, &receiver);
+pub fn start(filter_arg: FilterArg, out_arg: OutArg) {
+    let receiver = listener::listener(filter_arg, &out_arg.pcap_file_name);
+    process::process(out_arg, &receiver);
 }

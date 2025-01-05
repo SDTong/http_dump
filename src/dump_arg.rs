@@ -1,105 +1,8 @@
-use std::{collections::HashMap, fmt::Debug, path::PathBuf};
+use std::collections::HashMap;
 
-use crate::{analyze, DumpError};
+use crate::{process::{OutPro, OutType}, DumpError, FilterArg, OutArg};
 
 type ArgAnalyze = fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<usize, DumpError>;
-
-// 参数，过滤相关
-#[derive(Debug)]
-pub struct FilterArg {
-    // 网口名，比如常见的en0、lo0（环回地址）
-    // 默认值：any 表示所有网口
-    pub device_name: String,
-    // 从文件读取数据，优先级高于网口
-    pub file_name: Option<PathBuf>,
-    // 应用层协议，HTTP什么的
-    pub application_pro: Option<analyze::ApplicationPro>,
-    pub port: Option<u16>,
-    // BPF过滤条件
-    pub bpf: Option<String>,
-    pub timeout: i32,
-}
-
-impl FilterArg {
-    pub fn new() -> FilterArg {
-        let filter_arg = FilterArg {
-            device_name: "any".to_string(),
-            file_name: None,
-            application_pro: None,
-            port: Some(80),
-            bpf: None,
-            timeout: 200,
-        };
-        filter_arg
-    }
-}
-
-// 参数，输出相关
-#[derive(Debug)]
-pub struct OutArg {
-    // 输出形式
-    pub out_type: OutType,
-    // 输出数据层
-    pub out_pro: OutPro,
-    // 文件名，有值时，输出到文件，没有值时，输出到控制台
-    pub file_name: Option<String>,
-    // pcap文件名，和tcpdump -w命令相同
-    pub pcap_file_name: Option<String>,
-}
-
-impl OutArg {
-    pub fn new() -> OutArg {
-        OutArg {
-            out_type: OutType::Text("utf8"),
-            out_pro: OutPro::Application,
-            file_name: None,
-            pcap_file_name: None,
-        }
-    }
-}
-
-// 输出形式
-#[derive(Debug)]
-pub enum OutType {
-    // 原值
-    Itself,
-    // 10进制
-    Decimal,
-    // 文本，.0是编码，目前不使用
-    Text(&'static str),
-}
-
-impl OutType {
-    fn from_name(name: &str) -> Option<OutType> {
-        match name {
-            "itself" => Some(OutType::Itself),
-            "decimal" => Some(OutType::Decimal),
-            "text" => Some(OutType::Text("utf8")),
-            _ => None,
-        }
-    }
-}
-
-// 输出协议，包含协议头
-#[derive(Debug)]
-pub enum OutPro {
-    Link,
-    Network,
-    Transport,
-    Application,
-}
-
-impl OutPro {
-    fn from_name(name: &str) -> Option<OutPro> {
-        match name {
-            "link" => Some(OutPro::Link),
-            "network" => Some(OutPro::Network),
-            "transport" => Some(OutPro::Transport),
-            "application" => Some(OutPro::Application),
-            _ => None,
-        }
-    }
-}
 
 pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
     let mut filter_arg = FilterArg::new();
@@ -161,7 +64,7 @@ fn in_file_name_analy(
     args: &Vec<String>,
     index: usize,
     filter_arg: &mut FilterArg,
-    _out_arg: &mut OutArg,
+    _: &mut OutArg,
 ) -> Result<usize, DumpError> {
     if args.len() <= index + 1 {
         // 正常是 -r 文件名 ，少了值

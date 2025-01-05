@@ -5,9 +5,13 @@ use std::{
 
 use pcap::{Activated, Active, Capture, Device, Offline};
 
-use crate::{analyze, FilterArg, OutArg, PacketInfo};
+use crate::{analyze, PacketInfo};
 
-pub fn listener(filter_arg: FilterArg, out_arg: &mut OutArg) -> Receiver<PacketInfo> {
+pub use filter_arg::FilterArg;
+
+mod filter_arg;
+
+pub fn listener(filter_arg: FilterArg, pcap_file_name: &Option<String>) -> Receiver<PacketInfo> {
     // sender: Sender<PacketInfo>
     let (sender, receiver) = mpsc::channel();
     if filter_arg.file_name.is_some() {
@@ -17,7 +21,7 @@ pub fn listener(filter_arg: FilterArg, out_arg: &mut OutArg) -> Receiver<PacketI
     } else {
         let mut capture = capture_from_device(&filter_arg);
         set_filter(&filter_arg, &mut capture);
-        let save_file_option = if let Some(path) = &out_arg.pcap_file_name {
+        let save_file_option = if let Some(path) = pcap_file_name {
             let save_file = capture.savefile(path).unwrap();
             Some(save_file)
         } else {
