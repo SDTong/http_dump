@@ -2,8 +2,6 @@ use crate::PacketInfo;
 
 use super::out_arg;
 
-
-
 // 获取基础数据
 pub(crate) fn get_data_fn(out_pro: &out_arg::OutPro) -> fn(&PacketInfo) -> &[u8] {
     match out_pro {

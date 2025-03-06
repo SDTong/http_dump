@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 
-use crate::{process::{OutPro, OutType}, DumpError, FilterArg, OutArg};
+use crate::{
+    analyze,
+    process::{OutPro, OutType},
+    DumpError, FilterArg, OutArg,
+};
+
+mod http_arg;
 
 type ArgAnalyze = fn(&Vec<String>, usize, &mut FilterArg, &mut OutArg) -> Result<usize, DumpError>;
 
@@ -19,6 +25,14 @@ pub fn read_arg(args: Vec<String>) -> Result<(FilterArg, OutArg), DumpError> {
             index += 1;
         }
     }
+    // 应用层协议控制
+    match filter_arg.application_pro {
+        Some(analyze::ApplicationPro::HTTP) => {
+            let pro_arg_http = http_arg::read_arg(&args)?;
+            out_arg.pro_arg = pro_arg_http;
+        }
+        _ => {}
+    }
 
     Ok((filter_arg, out_arg))
 }
@@ -32,10 +46,15 @@ fn all_analyze_fn() -> HashMap<&'static str, ArgAnalyze> {
     map.insert("-p", port_analy);
     map.insert("--port", port_analy);
     map.insert("--bpf", bpf_analy);
+    map.insert("-http", http_analy);
+    map.insert("-https", http_analy);
+    map.insert("-all", all_analy);
     map.insert("-ot", out_type_analy);
     map.insert("--outType", out_type_analy);
     map.insert("-op", out_pro_analy);
     map.insert("--outPro", out_pro_analy);
+    map.insert("-of", out_file_analy);
+    map.insert("--outFile", out_file_analy);
 
     map
 }
@@ -122,6 +141,28 @@ fn bpf_analy(
     Ok(index + 1)
 }
 
+// -http -https
+fn http_analy(
+    _args: &Vec<String>,
+    index: usize,
+    filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    filter_arg.application_pro = Some(analyze::ApplicationPro::HTTP);
+    Ok(index + 1)
+}
+
+// -all
+fn all_analy(
+    _args: &Vec<String>,
+    index: usize,
+    filter_arg: &mut FilterArg,
+    _out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    filter_arg.application_pro = None;
+    Ok(index + 1)
+}
+
 // 输出协议层 -op --outPro
 fn out_pro_analy(
     args: &Vec<String>,
@@ -192,3 +233,23 @@ fn pcap_file_name_analy(
 
     Ok(index + 1)
 }
+
+// 输出到文件，不是pcap文件 -of --outFile
+fn out_file_analy(
+    args: &Vec<String>,
+    index: usize,
+    _filter_arg: &mut FilterArg,
+    out_arg: &mut OutArg,
+) -> Result<usize, DumpError> {
+    if args.len() <= index + 1 {
+        // 正常是 -of 文件名 ，少了值
+        return Err(DumpError {
+            msg: "缺少输出文件名".to_string(),
+        });
+    }
+    let index = index + 1;
+    out_arg.out_file = Some(args[index].clone());
+
+    Ok(index + 1)
+}
+

@@ -1,5 +1,4 @@
-use std::fmt::Debug;
-
+use std::{borrow::Cow, fmt::Debug};
 
 // 参数，输出相关
 #[derive(Debug)]
@@ -11,7 +10,7 @@ pub struct OutArg {
     // 协议控制
     pub pro_arg: Box<dyn ProArg>,
     // 文件名，有值时，输出到文件，没有值时，输出到控制台
-    pub file_name: Option<String>,
+    pub out_file: Option<String>,
     // pcap文件名，和tcpdump -w命令相同
     pub pcap_file_name: Option<String>,
 }
@@ -19,10 +18,10 @@ pub struct OutArg {
 impl OutArg {
     pub fn new() -> OutArg {
         OutArg {
-            out_type: OutType::Text("utf8"),
+            out_type: OutType::Itself,
             out_pro: OutPro::Application,
             pro_arg: Box::new(ProArgNone),
-            file_name: None,
+            out_file: None,
             pcap_file_name: None,
         }
     }
@@ -30,10 +29,10 @@ impl OutArg {
     // 使用指定的ProArg生成OutArg
     pub fn new_with_pro_arg(pro_arg: Box<dyn ProArg>) -> OutArg {
         OutArg {
-            out_type: OutType::Text("utf8"),
+            out_type: OutType::Itself,
             out_pro: OutPro::Application,
             pro_arg,
-            file_name: None,
+            out_file: None,
             pcap_file_name: None,
         }
     }
@@ -48,8 +47,6 @@ pub enum OutType {
     Decimal,
     // 16进制
     Hexadecimal,
-    // 文本，.0是编码，目前不使用
-    Text(&'static str),
 }
 
 impl OutType {
@@ -58,7 +55,6 @@ impl OutType {
             "itself" => Some(OutType::Itself),
             "decimal" => Some(OutType::Decimal),
             "hexadecimal" => Some(OutType::Hexadecimal),
-            "text" => Some(OutType::Text("utf8")),
             _ => None,
         }
     }
@@ -86,10 +82,9 @@ impl OutPro {
 }
 
 pub trait ProArg: Debug {
-    // 原始字节处理
-    fn original_byte_process<'a>(&self, data: &'a[u8]) -> &'a[u8];
-    // 转换后的字节处理
-    fn trans_byte_process<'a>(&self, data: &'a[u8]) -> &'a[u8];
+    // 字节处理
+    // 会在类型转换前调用
+    fn byte_process<'a>(&self, data: &'a [u8]) -> Cow<'a, [u8]>;
 }
 
 // 无协议控制
@@ -97,10 +92,7 @@ pub trait ProArg: Debug {
 struct ProArgNone;
 
 impl ProArg for ProArgNone {
-    fn original_byte_process<'a>(&self, data: &'a [u8]) -> &'a [u8] {
-        data
-    }
-    fn trans_byte_process<'a>(&self, data: &'a [u8]) -> &'a [u8] {
-        data
+    fn byte_process<'a>(&self, data: &'a [u8]) -> Cow<'a, [u8]> {
+        Cow::Borrowed(data)
     }
 }
